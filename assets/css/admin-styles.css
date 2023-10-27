@@ -1,0 +1,45 @@
+/* Add some basic styling to the form */
+form {
+    max-width: 400px;
+    margin: 0 auto;
+    padding: 20px;
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Style form labels */
+label {
+    display: block;
+    margin-top: 10px;
+}
+
+/* Style input fields */
+input[type="text"],
+select {
+    width: 100%;
+    padding: 10px;
+    margin: 5px 0;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+}
+
+/* Style the save button */
+.button-primary {
+    background-color: #0073e6;
+    border-color: #0073e6;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 3px;
+}
+
+/* Style the checkbox */
+input[type="checkbox"] {
+    margin-top: 5px;
+}
+
+/* Style the container */
+.container {
+    padding: 20px;
+}
