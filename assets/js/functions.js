@@ -1,4 +1,3 @@
-console.log('her');
 jQuery(document).ready(function($) {
     $('#data_source').on('change', function() {
         var selectedValue = $(this).val();
