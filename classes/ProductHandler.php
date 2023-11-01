@@ -1,6 +1,6 @@
 <?php
 
-class ProductHandler
+class ProductHandler extends MMH_Sync_Log
 {
     // Constructor, initialize actions and filters
     public function __construct()
@@ -34,9 +34,21 @@ class ProductHandler
                         $this->productCheck($product_data);
                     }
                 }
-            } else error_log(print_r('not json', true));
+            } else {
+                $this->createLog([
+					'action' => 'handle_json_upload',
+					'type' => 'file_type',
+					'type_id' => '',
+					'msg' => 'File is not Json.',
+				]);
+            }
         } else {
-            error_log(print_r('no file', true));
+            $this->createLog([
+                'action' => 'handle_json_upload',
+                'type' => 'no_file',
+                'type_id' => '',
+                'msg' => 'No file selected',
+            ]);
         }
     }
 
@@ -56,12 +68,10 @@ class ProductHandler
     private function productAttributeCheck($attribute_name)
     {
         $attribute_id = wc_attribute_taxonomy_id_by_name($attribute_name);
-        
-        if ($attribute_id ) {
+
+        if ($attribute_id) {
             return $attribute_id;
-        }
-        else return false;
-        
+        } else return false;
     }
 
     private function productAttributeHandler($attribute_name)
@@ -89,11 +99,13 @@ class ProductHandler
     private function createOrGetAttributeVariation($colorVariations)
     {
         $term_ids = array();
-        
+
         foreach ($colorVariations as $key => $color) {
             // Check if the color variation already exists
             error_log(print_r('$key here', true));
             error_log(print_r($key, true));
+            error_log(print_r('$color here', true));
+            error_log(print_r($color, true));
             $existing_term = term_exists($color, 'pa_color');
 
             if (!$existing_term) {
@@ -101,8 +113,7 @@ class ProductHandler
                 $term = wp_insert_term($color, 'pa_color');
                 if (!is_wp_error($term)) {
                     $term_ids[] = $term['term_id'];
-                }
-                else {
+                } else {
                     error_log(print_r('error here', true));
                     error_log(print_r($term->get_error_message(), true));
                 }
@@ -117,9 +128,8 @@ class ProductHandler
 
     private function createProduct($product_data)
     {
-        $category_array = array();
-        $category_id = $this->categoryCheck($product_data['category']);
-        array_push($category_array, $category_id);
+        $product_categories = array();
+        $product_additional_categories = array();
         $product_type = 'simple'; // Default to simple product
 
         // Check if the product should be a variable product
@@ -134,13 +144,30 @@ class ProductHandler
         }
 
         if (!$new_product) {
-            // Error creating the product
-            error_log(print_r('Error creating the product', true));
+            $this->createLog([
+                'action' => 'createProduct',
+                'type' => 'new_product',
+                'type_id' => '',
+                'msg' => 'Error creating the product',
+            ]);
             return false;
         }
+
         $new_product->set_sku($product_data['code']);
         $new_product->set_name($product_data['name']);
-        $new_product->set_category_ids($category_array);
+        //adding main categories
+        $categories_array = explode('<', $product_data['_categories']);
+        $categories_array = array_reverse($categories_array);
+
+        $product_categories = $this->categoryCheck($categories_array);
+        //adding additional categories
+        $additional_categories_array = explode('<', $product_data['_add_category']);
+        $additional_categories_array = array_reverse($additional_categories_array);
+
+        $product_additional_categories = $this->categoryCheck($additional_categories_array);
+        $product_total_categories = array_merge($product_categories, $product_additional_categories);
+        $product_total_categories = array_values(array_unique($product_total_categories));
+        $new_product->set_category_ids($product_total_categories);
 
         if (isset($product_data['desc2'])) {
             $new_product->set_description($product_data['desc2']);
@@ -159,11 +186,11 @@ class ProductHandler
                 $term_ids  = $this->createOrGetAttributeVariation($colorVariations);
                 error_log(print_r('checking $attribute_id after', true));
                 error_log(print_r($term_ids, true));
-                $new_product->set_attributes(array(
-                    'pa_color' => $term_ids,
-                ));
-                // $new_product->set_variation_default_attributes($variation_attributes);
+                $variation_attributes = array(
+                    'pa_color' => 33,
+                );
 
+                $new_product->set_attributes($variation_attributes);
             }
         }
 
@@ -179,13 +206,35 @@ class ProductHandler
         if (isset($product_data['style'])) {
             $new_product->update_meta_data('style', $product_data['style']);
         }
+        if (isset($product_data['producttype'])) {
+            $dimensions = $this->extractDimensions($product_data['producttype']);
+            $new_product->set_length($dimensions['length']);
+            $new_product->set_width($dimensions['width']);
+            $new_product->set_height($dimensions['height']);
+        }
+        if (isset($product_data['_add_style'])) {
+            $style_array = explode(',', $product_data['_add_style']);
+            $new_product->update_meta_data('style_filter', $style_array);
+        }
 
         // Save the product
         $new_product_id = $new_product->save();
+
+        $this->createLog([
+            'action' => 'createProduct',
+            'type' => 'Success',
+            'type_id' => $product_data['code'],
+            'msg' => 'Product Created successfully',
+        ]);
+
         if (is_wp_error($new_product_id)) {
             $error_string = $new_product_id->get_error_message();
-            error_log(print_r('error creating product', true));
-            error_log(print_r($error_string, true));
+            $this->createLog([
+                'action' => 'createProduct',
+                'type' => 'save_product',
+                'type_id' => $product_data['code'],
+                'msg' => $error_string,
+            ]);
         }
 
         return $new_product_id;
@@ -193,16 +242,28 @@ class ProductHandler
 
     private function updateProduct($product_data, $existing_products)
     {
-        $category_array = array();
+        $product_categories = array();
+        $product_additional_categories = array();
         $product_type = 'simple';
+
         if (!empty($existing_products)) {
             $existing_product = reset($existing_products);
 
             $existing_product->set_name($product_data['name']);
+            //adding main categories
+            $categories_array = explode('<', $product_data['_categories']);
+            $categories_array = array_reverse($categories_array);
 
-            $category_id = $this->categoryCheck($product_data['category']);
-            array_push($category_array, $category_id);
-            $existing_product->set_category_ids($category_array);
+            $product_categories = $this->categoryCheck($categories_array);
+
+            //adding additional categories
+            $additional_categories_array = explode('<', $product_data['_add_category']);
+            $additional_categories_array = array_reverse($additional_categories_array);
+
+            $product_additional_categories = $this->categoryCheck($additional_categories_array);
+            $product_total_categories = array_merge($product_categories, $product_additional_categories);
+            $product_total_categories = array_values(array_unique($product_total_categories));
+            $existing_product->set_category_ids($product_total_categories);
 
             $existing_product->set_price(str_replace(',', '.', $product_data['price']));
             $existing_product->set_regular_price(str_replace(',', '.', $product_data['price']));
@@ -222,6 +283,18 @@ class ProductHandler
             }
             if (isset($product_data['style'])) {
                 $existing_product->update_meta_data('style', $product_data['style']);
+            }
+            if (isset($product_data['_add_style'])) {
+                error_log(print_r('_add_style', true));
+                $style_array = explode(',', $product_data['_add_style']);
+                error_log(print_r($style_array, true));
+                $existing_product->update_meta_data('style_filter', $style_array);
+            }
+            if (isset($product_data['producttype'])) {
+                $dimensions = $this->extractDimensions($product_data['producttype']);
+                $existing_product->set_length($dimensions['length']);
+                $existing_product->set_width($dimensions['width']);
+                $existing_product->set_height($dimensions['height']);
             }
 
             if (isset($product_data['color']) && $product_data['color']) {
@@ -247,47 +320,101 @@ class ProductHandler
 
             $product_id = wc_get_product_id_by_sku($product_data['code']);
             $product_classname = WC_Product_Factory::get_product_classname($product_id, $product_type);
-            error_log(print_r('$product_classname', true));
-            error_log(print_r($product_classname, true));
 
             // Get the new product object from the correct classname
             $updated_product       = new $product_classname($product_id);
-            error_log(print_r('$updated_product', true));
-            error_log(print_r($updated_product, true));
             // Save the product
-            $updated_product->save();
+            $existing_product->save();
+            $this->createLog([
+                'action' => 'updateProduct',
+                'type' => 'Success',
+                'type_id' => $product_data['code'],
+                'msg' => 'Product Updated successfully',
+            ]);
         }
     }
 
-
-    private function categoryCheck($category_name)
+    private function extractDimensions($dimension_string)
     {
+        //Y is height, m width, 
+        $patterns = array(
+            '/(\d+(\.\d+)?)\s*\(Υ\)/', // Height
+            '/(\d+(\.\d+)?)\s*\(Μ\)/', // Width
+            '/(\d+(\.\d+)?)\s*\(Π\)/', // Length
+        );
 
-        $category = get_term_by('name', $category_name, 'product_cat');
-
-        if ($category === false) {
-            return $this->createCategory($category_name);
-        } else {
-            // Category already exists, return its term ID
-            return $category->term_id;
+        $height = $width = $length = 0;
+        
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $dimension_string, $matches)) {
+                $value = (float)$matches[1]; // Convert to a float
+                if (strpos($pattern, 'Υ') !== false) {
+                    $height = $value;
+                } elseif (strpos($pattern, 'Μ') !== false) {
+                    $width = $value;
+                } elseif (strpos($pattern, 'Π') !== false) {
+                    $length = $value;
+                }
+            }
         }
+        $dimension_array = array("height" =>$height,"width" =>$width,"length" =>$length);
+        return $dimension_array;
+    }
+
+    private function categoryCheck($categories_array)
+    {
+        $parent_category_id = 0;
+        $product_categories = array();
+
+        foreach ($categories_array as $category_name) {
+
+            $category = get_term_by('name', $category_name, 'product_cat');
+
+            if ($category === false) {
+                $category_id = $this->createCategory($category_name, $parent_category_id);
+            } else {
+                // Category already exists, return its term ID
+                $category_id = $category->term_id;
+            }
+            array_push($product_categories, $category_id);
+            $parent_category_id = $category_id;
+        }
+        return $product_categories;
     }
 
 
-    private function createCategory($category_data)
+    private function createCategory($category_data, $parent_category)
     {
+        error_log(print_r('creating category', true));
+        error_log(print_r($category_data, true));
+        error_log(print_r('creating $parent_category', true));
+        error_log(print_r($parent_category, true));
         $category_args = array(
             'cat_name' => $category_data,
             'category_nicename' => sanitize_title($category_data),
+            'parent' => $parent_category,
         );
 
         $result = wp_insert_term($category_data, 'product_cat', $category_args);
 
         if (!is_wp_error($result)) {
-            // Category created successfully
+
+            $this->createLog([
+                'action' => 'createCategory',
+                'type' => 'Success',
+                'type_id' => $category_data,
+                'msg' => 'Category created successfully',
+            ]);
+
             return $result['term_id'];
         } else {
             // Error creating the category
+            $this->createLog([
+                'action' => 'createCategory',
+                'type' => 'Error',
+                'type_id' => $category_data,
+                'msg' => 'Error creating the category',
+            ]);
             return false;
         }
     }

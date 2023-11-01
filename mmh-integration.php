@@ -14,6 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 } // Exit if accessed directly
 
+require_once(plugin_dir_path(__FILE__) . 'classes/Log.php');
 require_once(plugin_dir_path(__FILE__) . 'classes/ProductHandler.php');
 
 add_action('wp_enqueue_scripts', 'enqueue_custom_styles_scripts');
