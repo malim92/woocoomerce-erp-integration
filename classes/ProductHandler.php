@@ -36,11 +36,11 @@ class ProductHandler extends MMH_Sync_Log
                 }
             } else {
                 $this->createLog([
-					'action' => 'handle_json_upload',
-					'type' => 'file_type',
-					'type_id' => '',
-					'msg' => 'File is not Json.',
-				]);
+                    'action' => 'handle_json_upload',
+                    'type' => 'file_type',
+                    'type_id' => '',
+                    'msg' => 'File is not Json.',
+                ]);
             }
         } else {
             $this->createLog([
@@ -160,13 +160,17 @@ class ProductHandler extends MMH_Sync_Log
         $categories_array = array_reverse($categories_array);
 
         $product_categories = $this->categoryCheck($categories_array);
+        $product_total_categories = $product_categories;
         //adding additional categories
-        $additional_categories_array = explode('<', $product_data['_add_category']);
-        $additional_categories_array = array_reverse($additional_categories_array);
+        if (isset($product_data['_add_category'])) {
+            $additional_categories_array = explode('<', $product_data['_add_category']);
+            $additional_categories_array = array_reverse($additional_categories_array);
 
-        $product_additional_categories = $this->categoryCheck($additional_categories_array);
-        $product_total_categories = array_merge($product_categories, $product_additional_categories);
-        $product_total_categories = array_values(array_unique($product_total_categories));
+            $product_additional_categories = $this->categoryCheck($additional_categories_array);
+            $product_total_categories = array_merge($product_categories, $product_additional_categories);
+            $product_total_categories = array_values(array_unique($product_total_categories));
+        }
+
         $new_product->set_category_ids($product_total_categories);
 
         if (isset($product_data['desc2'])) {
@@ -255,15 +259,19 @@ class ProductHandler extends MMH_Sync_Log
             $categories_array = array_reverse($categories_array);
 
             $product_categories = $this->categoryCheck($categories_array);
-
+            $product_total_categories = $product_categories;
             //adding additional categories
-            $additional_categories_array = explode('<', $product_data['_add_category']);
-            $additional_categories_array = array_reverse($additional_categories_array);
-
-            $product_additional_categories = $this->categoryCheck($additional_categories_array);
-            $product_total_categories = array_merge($product_categories, $product_additional_categories);
-            $product_total_categories = array_values(array_unique($product_total_categories));
+            if (isset($product_data['_add_category'])) {
+                $additional_categories_array = explode('<', $product_data['_add_category']);
+                $additional_categories_array = array_reverse($additional_categories_array);
+    
+                $product_additional_categories = $this->categoryCheck($additional_categories_array);
+                $product_total_categories = array_merge($product_categories, $product_additional_categories);
+                $product_total_categories = array_values(array_unique($product_total_categories));
+            }
+    
             $existing_product->set_category_ids($product_total_categories);
+            
 
             $existing_product->set_price(str_replace(',', '.', $product_data['price']));
             $existing_product->set_regular_price(str_replace(',', '.', $product_data['price']));
@@ -344,7 +352,7 @@ class ProductHandler extends MMH_Sync_Log
         );
 
         $height = $width = $length = 0;
-        
+
         foreach ($patterns as $pattern) {
             if (preg_match($pattern, $dimension_string, $matches)) {
                 $value = (float)$matches[1]; // Convert to a float
@@ -357,7 +365,7 @@ class ProductHandler extends MMH_Sync_Log
                 }
             }
         }
-        $dimension_array = array("height" =>$height,"width" =>$width,"length" =>$length);
+        $dimension_array = array("height" => $height, "width" => $width, "length" => $length);
         return $dimension_array;
     }
 
