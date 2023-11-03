@@ -17,8 +17,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 require_once(plugin_dir_path(__FILE__) . 'classes/Log.php');
 require_once(plugin_dir_path(__FILE__) . 'classes/ProductHandler.php');
 
-add_action('wp_enqueue_scripts', 'enqueue_custom_styles_scripts');
-
 function MMH_admin_page()
 {
     wp_enqueue_style('admin-styles', plugin_dir_url(__FILE__) . 'assets/css/admin-styles.css');

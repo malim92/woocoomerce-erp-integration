@@ -11,10 +11,10 @@ class ProductHandler extends MMH_Sync_Log
     // Method to handle JSON file upload
     public function handle_json_upload()
     {
-        // error_log(print_r('$_FILES', true));
-        // error_log(print_r($_FILES, true));
-        // error_log(print_r('$_POST', true));
-        // error_log(print_r($_POST, true));
+        error_log(print_r('$_FILES', true));
+        error_log(print_r($_FILES, true));
+        error_log(print_r('$_POST', true));
+        error_log(print_r($_POST, true));
         if (isset($_FILES['json_upload'])) {
             $file = $_FILES['json_upload'];
 
@@ -293,9 +293,7 @@ class ProductHandler extends MMH_Sync_Log
                 $existing_product->update_meta_data('style', $product_data['style']);
             }
             if (isset($product_data['_add_style'])) {
-                error_log(print_r('_add_style', true));
                 $style_array = explode(',', $product_data['_add_style']);
-                error_log(print_r($style_array, true));
                 $existing_product->update_meta_data('style_filter', $style_array);
             }
             if (isset($product_data['producttype'])) {
@@ -393,10 +391,10 @@ class ProductHandler extends MMH_Sync_Log
 
     private function createCategory($category_data, $parent_category)
     {
-        error_log(print_r('creating category', true));
-        error_log(print_r($category_data, true));
-        error_log(print_r('creating $parent_category', true));
-        error_log(print_r($parent_category, true));
+        // error_log(print_r('creating category', true));
+        // error_log(print_r($category_data, true));
+        // error_log(print_r('creating $parent_category', true));
+        // error_log(print_r($parent_category, true));
         $category_args = array(
             'cat_name' => $category_data,
             'category_nicename' => sanitize_title($category_data),
