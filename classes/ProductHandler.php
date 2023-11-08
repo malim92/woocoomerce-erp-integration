@@ -28,9 +28,21 @@ class ProductHandler extends MMH_Sync_Log
                 // Parse JSON data
                 $products = json_decode($json_data, true);
 
+                $stockData = $this->fetchStockData();
+
+                $stockMapping = array();
+                foreach ($stockData as $stockItem) {
+                    $itemCode = $stockItem->{'item.code'};
+                    $stockMapping[$itemCode] = $stockItem;
+                }
+
                 if ($products) {
-                    // Loop through the products and create them
                     foreach ($products as $product_data) {
+                        //appending the stock object
+                        $code = $product_data['code'];
+                        if (isset($stockMapping[$code])) {
+                            $product_data['stock'] = $stockMapping[$code];
+                        }
                         $this->productCheck($product_data);
                     }
                 }
@@ -52,12 +64,34 @@ class ProductHandler extends MMH_Sync_Log
         }
     }
 
+    private function fetchStockData()
+    {
+        $url = 'http://185.106.103.114:8080/$TableGetView?system=pos&file=stocktake&report=web_stocktake&compact=true';
+
+        $args = array(
+            'timeout'     => 5,
+            'redirection' => 5,
+            'httpversion' => '1.0',
+            'blocking'    => true,
+            'body'        => null,
+            'compress'    => false,
+            'decompress'  => true,
+            'sslverify'   => true,
+            'stream'      => false,
+            'filename'    => null
+        );
+
+        $results = json_decode(wp_remote_retrieve_body(wp_remote_get($url, $args)));
+        return $results;
+    }
+
     private function productCheck($product_data)
     {
         $existing_products = wc_get_products(array(
             'sku' => $product_data['code'],
         ));
-
+        error_log(print_r('$product_data', true));
+        error_log(print_r($product_data, true));
         if (!empty($existing_products)) {
             $this->updateProduct($product_data, $existing_products);
         } else {
@@ -173,10 +207,19 @@ class ProductHandler extends MMH_Sync_Log
 
         $new_product->set_category_ids($product_total_categories);
 
-        if (isset($product_data['desc2'])) {
-            $new_product->set_description($product_data['desc2']);
+        if ($product_data['stock']) {
+            $new_product->set_stock_quantity($product_data['stock']->quantity);
+            $new_product->set_manage_stock(true);
+        } else {
+            $new_product->set_stock_quantity(0);
         }
 
+        if (isset($product_data['*notes'])) {
+            $new_product->set_description($product_data['*notes']);
+        }
+        if (isset($product_data['*notes2'])) {
+            $new_product->update_meta_data('notes_en', $product_data['*notes2']);
+        }
         $new_product->set_regular_price(str_replace(',', '.', $product_data['price']));
         $new_product->set_price(str_replace(',', '.', $product_data['price']));
 
@@ -198,6 +241,11 @@ class ProductHandler extends MMH_Sync_Log
             }
         }
 
+        if (isset($product_data['design'])) {
+            $gender_array = explode('|', $product_data['design']);
+            $new_product->update_meta_data('gender', $gender_array);
+        }
+
         if (isset($product_data['barcode'])) {
             $new_product->update_meta_data('barcode', $product_data['barcode']);
         }
@@ -209,6 +257,9 @@ class ProductHandler extends MMH_Sync_Log
         }
         if (isset($product_data['style'])) {
             $new_product->update_meta_data('style', $product_data['style']);
+        }
+        if (isset($product_data['name'])) {
+            $new_product->update_meta_data('name_en', $product_data['properties']);
         }
         if (isset($product_data['producttype'])) {
             $dimensions = $this->extractDimensions($product_data['producttype']);
@@ -264,20 +315,34 @@ class ProductHandler extends MMH_Sync_Log
             if (isset($product_data['_add_category'])) {
                 $additional_categories_array = explode('<', $product_data['_add_category']);
                 $additional_categories_array = array_reverse($additional_categories_array);
-    
+
                 $product_additional_categories = $this->categoryCheck($additional_categories_array);
                 $product_total_categories = array_merge($product_categories, $product_additional_categories);
                 $product_total_categories = array_values(array_unique($product_total_categories));
             }
-    
+
             $existing_product->set_category_ids($product_total_categories);
-            
+
+            if (isset($product_data['stock'])) {
+                $existing_product->set_stock_quantity($product_data['stock']->quantity);
+                $existing_product->set_manage_stock(true);
+            } else {
+                $existing_product->set_stock_quantity(0);
+            }
 
             $existing_product->set_price(str_replace(',', '.', $product_data['price']));
             $existing_product->set_regular_price(str_replace(',', '.', $product_data['price']));
 
-            if (isset($product_data['desc2'])) {
-                $existing_product->set_description($product_data['desc2']);
+            if (isset($product_data['*notes'])) {
+                $existing_product->set_description($product_data['*notes']);
+            }
+            if (isset($product_data['*notes2'])) {
+                $existing_product->update_meta_data('notes_en', $product_data['*notes2']);
+            }
+
+            if (isset($product_data['design'])) {
+                $gender_array = explode('|', $product_data['design']);
+                $existing_product->update_meta_data('gender', $gender_array);
             }
 
             if (isset($product_data['barcode'])) {
@@ -291,6 +356,9 @@ class ProductHandler extends MMH_Sync_Log
             }
             if (isset($product_data['style'])) {
                 $existing_product->update_meta_data('style', $product_data['style']);
+            }
+            if (isset($product_data['properties'])) {
+                $existing_product->update_meta_data('name_en', $product_data['properties']);
             }
             if (isset($product_data['_add_style'])) {
                 $style_array = explode(',', $product_data['_add_style']);
@@ -323,6 +391,21 @@ class ProductHandler extends MMH_Sync_Log
                 $existing_product->set_attributes(array_keys($product_data['variations'][0]['attributes']));
                 $existing_product->set_available_variations($variations);
             }
+
+            if (isset($product_data['**image_names'])) {
+                $images_array = explode("\n", $product_data['**image_names']);
+                $imageHandler = new ImageHandler();
+                $image_ids_array = $imageHandler->assignImagesToProduct($images_array);
+
+                foreach ($image_ids_array as $image_id) {
+                    $existing_product->set_image_id($image_id);
+                    break;
+                }
+                
+                $existing_product->set_gallery_image_ids($image_ids_array);
+            }
+            error_log(print_r('$image_ids_array here', true));
+            error_log(print_r($image_ids_array, true));
 
             $product_id = wc_get_product_id_by_sku($product_data['code']);
             $product_classname = WC_Product_Factory::get_product_classname($product_id, $product_type);
