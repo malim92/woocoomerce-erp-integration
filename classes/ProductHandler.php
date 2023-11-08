@@ -272,6 +272,19 @@ class ProductHandler extends MMH_Sync_Log
             $new_product->update_meta_data('style_filter', $style_array);
         }
 
+        if (isset($product_data['**image_names'])) {
+            $images_array = explode("\n", $product_data['**image_names']);
+            $imageHandler = new ImageHandler();
+            $image_ids_array = $imageHandler->assignImagesToProduct($images_array);
+
+            foreach ($image_ids_array as $image_id) {
+                $new_product->set_image_id($image_id);
+                break;
+            }
+
+            $new_product->set_gallery_image_ids($image_ids_array);
+        }
+
         // Save the product
         $new_product_id = $new_product->save();
 
@@ -401,11 +414,10 @@ class ProductHandler extends MMH_Sync_Log
                     $existing_product->set_image_id($image_id);
                     break;
                 }
-                
+
                 $existing_product->set_gallery_image_ids($image_ids_array);
             }
-            error_log(print_r('$image_ids_array here', true));
-            error_log(print_r($image_ids_array, true));
+            
 
             $product_id = wc_get_product_id_by_sku($product_data['code']);
             $product_classname = WC_Product_Factory::get_product_classname($product_id, $product_type);
