@@ -17,6 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 require_once(plugin_dir_path(__FILE__) . 'classes/Log.php');
 require_once(plugin_dir_path(__FILE__) . 'classes/ProductHandler.php');
 require_once(plugin_dir_path(__FILE__) . 'classes/ImageHandler.php');
+require_once(plugin_dir_path(__FILE__) . 'classes/AttributeHandler.php');
 
 function MMH_admin_page()
 {
