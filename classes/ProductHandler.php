@@ -87,8 +87,11 @@ class ProductHandler extends MMH_Sync_Log
 
     private function productCheck($product_data)
     {
-        $_product_id = wc_get_product_id_by_sku($product_data['code']);
-
+        $_product_id = wc_get_product_id_by_sku($this->normalizeCharacters($product_data['code']));
+        error_log(print_r('pro code normalized', true));
+        error_log(print_r($this->normalizeCharacters($product_data['code']), true));
+        error_log(print_r('$_product_id', true));
+        error_log(print_r($_product_id, true));
         if ($_product_id > 0) {
             $existing_products = wc_get_product($_product_id);
 
@@ -155,10 +158,10 @@ class ProductHandler extends MMH_Sync_Log
         }
 
         if (isset($product_data['*notes'])) {
-            $new_product->set_description($product_data['*notes']);
+            $new_product->set_description($this->normalizeCharacters($product_data['*notes']));
         }
         if (isset($product_data['*notes2'])) {
-            $new_product->update_meta_data('notes_en', $product_data['*notes2']);
+            $new_product->update_meta_data('notes_en', $this->normalizeCharacters($product_data['*notes2']));
         }
         $new_product->set_regular_price(str_replace(',', '.', $product_data['price']));
         $new_product->set_price(str_replace(',', '.', $product_data['price']));
@@ -199,6 +202,9 @@ class ProductHandler extends MMH_Sync_Log
         if (isset($product_data['properties'])) {
             $new_product->update_meta_data('name_en', $this->normalizeCharacters($product_data['properties']));
         }
+        if (isset($product_data['season'])) {
+            $new_product->update_meta_data('battery', $product_data['season']);
+        }
         if (isset($product_data['producttype'])) {
             $dimensions = $this->extractDimensions($product_data['producttype']);
             $new_product->set_length($dimensions['length']);
@@ -210,7 +216,7 @@ class ProductHandler extends MMH_Sync_Log
             $new_product->update_meta_data('style_filter', $style_array);
         }
 
-        if (isset($product_data['**image_names'])) {
+        if (isset($product_data['**image_names']) && $product_data['**image_names'] !== '') {
             $image_ids_array = array();
             $images_array = explode("\n", $product_data['**image_names']);
             $imageHandler = new ImageHandler();
@@ -220,7 +226,7 @@ class ProductHandler extends MMH_Sync_Log
                     $new_product->set_image_id($image_id);
                     break;
                 }
-
+                $image_ids_array = array_shift($image_ids_array);
                 $new_product->set_gallery_image_ids($image_ids_array);
             }
         }
@@ -327,10 +333,13 @@ class ProductHandler extends MMH_Sync_Log
             $existing_product->set_regular_price(str_replace(',', '.', $product_data['price']));
 
             if (isset($product_data['*notes'])) {
-                $existing_product->set_description($product_data['*notes']);
+                $existing_product->set_description($this->normalizeCharacters($product_data['*notes']));
             }
             if (isset($product_data['*notes2'])) {
-                $existing_product->update_meta_data('notes_en', $product_data['*notes2']);
+                $existing_product->update_meta_data('notes_en', $this->normalizeCharacters($product_data['*notes2']));
+            }
+            if (isset($product_data['season'])) {
+                $existing_product->update_meta_data('battery', $product_data['season']);
             }
 
             if (isset($product_data['design'])) {
@@ -407,7 +416,7 @@ class ProductHandler extends MMH_Sync_Log
                     // $variation_id = $attributeHandler->createOrUpdateVariation($product_id, $variation_data);
                 }
             }
-            if (isset($product_data['**image_names'])) {
+            if (isset($product_data['**image_names']) && $product_data['**image_names'] !== '') {
                 $image_ids_array = array();
                 $images_array = explode("\n", $product_data['**image_names']);
                 $imageHandler = new ImageHandler();
@@ -417,7 +426,7 @@ class ProductHandler extends MMH_Sync_Log
                         $existing_product->set_image_id($image_id);
                         break;
                     }
-
+                    $image_ids_array = array_shift($image_ids_array);
                     $existing_product->set_gallery_image_ids($image_ids_array);
                 }
             }
