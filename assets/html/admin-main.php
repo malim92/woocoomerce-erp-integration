@@ -12,7 +12,7 @@ if (isset($_POST['mmh_submit'])) {
 
    $product_handler = new ProductHandler();
    $handleJson = $product_handler->handle_json_upload();
-   error_log(print_r($handleJson, true));
+   // error_log(print_r($handleJson, true));
 
    $api_url = sanitize_text_field($_POST['api_url']);
 

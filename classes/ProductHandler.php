@@ -1,5 +1,13 @@
 <?php
 
+/*
+number of products to show in category page
+remaining for free shipping
+remove shipping only to gr and cy
+add girft wrap 1 euro
+show meta capital
+
+*/
 class ProductHandler extends MMH_Sync_Log
 {
     // Constructor, initialize actions and filters
@@ -11,10 +19,10 @@ class ProductHandler extends MMH_Sync_Log
     // Method to handle JSON file upload
     public function handle_json_upload()
     {
-        error_log(print_r('$_FILES', true));
-        error_log(print_r($_FILES, true));
-        error_log(print_r('$_POST', true));
-        error_log(print_r($_POST, true));
+        // error_log(print_r('$_FILES', true));
+        // error_log(print_r($_FILES, true));
+        // error_log(print_r('$_POST', true));
+        // error_log(print_r($_POST, true));
         if (isset($_FILES['json_upload'])) {
             $file = $_FILES['json_upload'];
 
@@ -29,10 +37,11 @@ class ProductHandler extends MMH_Sync_Log
                 $products = json_decode($json_data, true);
 
                 $stockData = $this->fetchStockData();
-
+                // error_log(print_r('$stockData', true));
+                // error_log(print_r($stockData, true));
                 $stockMapping = array();
                 foreach ($stockData as $stockItem) {
-                    $itemCode = $stockItem->{'item.code'};
+                    $itemCode = $stockItem['item.code'];
                     $stockMapping[$itemCode] = $stockItem;
                 }
 
@@ -66,32 +75,47 @@ class ProductHandler extends MMH_Sync_Log
 
     private function fetchStockData()
     {
-        $url = 'http://185.106.103.114:8080/$TableGetView?system=pos&file=stocktake&report=web_stocktake&compact=true';
+        $url = 'http://185.106.103.114:8080/$TableGetView?system=pos&file=itemloc&report=web_stock&compact=true';
 
         $args = array(
             'timeout'     => 5,
-            'redirection' => 5,
+            'redirection' => 10,
             'httpversion' => '1.0',
             'blocking'    => true,
             'body'        => null,
             'compress'    => false,
             'decompress'  => true,
-            'sslverify'   => true,
+            'sslverify'   => false,
             'stream'      => false,
             'filename'    => null
         );
 
-        $results = json_decode(wp_remote_retrieve_body(wp_remote_get($url, $args)));
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        // curl_setopt($ch, CURLOPT_USERPWD, 'api2' . ":" . 'api2');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 25);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Disable SSL certificate verification (not recommended for production)
+        $data = curl_exec($ch);
+        curl_close($ch);
+        $results = json_decode($data, true);
+
+        // $results = json_decode(wp_remote_retrieve_body(wp_remote_get($url, $args)));
+        error_log(print_r('$stockData $results', true));
+        error_log(print_r($results, true));
         return $results;
     }
 
     private function productCheck($product_data)
     {
         $_product_id = wc_get_product_id_by_sku($this->normalizeCharacters($product_data['code']));
-        error_log(print_r('pro code normalized', true));
-        error_log(print_r($this->normalizeCharacters($product_data['code']), true));
-        error_log(print_r('$_product_id', true));
-        error_log(print_r($_product_id, true));
+        if ($_product_id == 0)
+            $_product_id = wc_get_product_id_by_sku($product_data['code']);
+
+        // error_log(print_r('pro code normalized', true));
+        // error_log(print_r($this->normalizeCharacters($product_data['code']), true));
+        // error_log(print_r('$_product_id', true));
+        // error_log(print_r($_product_id, true));
         if ($_product_id > 0) {
             $existing_products = wc_get_product($_product_id);
 
@@ -151,7 +175,7 @@ class ProductHandler extends MMH_Sync_Log
         $new_product->set_category_ids($product_total_categories);
 
         if (isset($product_data['stock'])) {
-            $new_product->set_stock_quantity($product_data['stock']->quantity);
+            $new_product->set_stock_quantity($product_data['stock']['quantity']);
             $new_product->set_manage_stock(true);
         } else {
             $new_product->set_stock_quantity(0);
@@ -165,6 +189,7 @@ class ProductHandler extends MMH_Sync_Log
         }
         $new_product->set_regular_price(str_replace(',', '.', $product_data['price']));
         $new_product->set_price(str_replace(',', '.', $product_data['price']));
+        $new_product->set_sale_price(str_replace(',', '.', $product_data['_special']));
 
         if (isset($product_data['design'])) {
             // $gender_array = explode('|', $this->normalizeCharacters(mb_strtolower($product_data['design'])));
@@ -175,10 +200,10 @@ class ProductHandler extends MMH_Sync_Log
                     $new_product->update_meta_data('gender', 'Unisex');
                     break;
                 case str_contains($gender_string, 'Αγόρι'):
-                    $new_product->update_meta_data('gender', 'Αγόρι');
+                    $new_product->update_meta_data('gender', 'agori');
                     break;
                 case str_contains($gender_string, 'Κορίτσι'):
-                    $new_product->update_meta_data('gender', 'Κορίτσι');
+                    $new_product->update_meta_data('gender', 'koritsi');
                     break;
 
                 default:
@@ -218,15 +243,13 @@ class ProductHandler extends MMH_Sync_Log
 
         if (isset($product_data['**image_names']) && $product_data['**image_names'] !== '') {
             $image_ids_array = array();
-            $images_array = explode("\n", $product_data['**image_names']);
+            $images_array = explode("|", $this->normalizeCharacters($product_data['**image_names']));
             $imageHandler = new ImageHandler();
             $image_ids_array = $imageHandler->assignImagesToProduct($images_array);
             if (count($image_ids_array) !== 0) {
-                foreach ($image_ids_array as $image_id) {
-                    $new_product->set_image_id($image_id);
-                    break;
-                }
-                $image_ids_array = array_shift($image_ids_array);
+                $featured_image_id = array_shift($image_ids_array);
+                $new_product->set_image_id($featured_image_id);
+
                 $new_product->set_gallery_image_ids($image_ids_array);
             }
         }
@@ -323,7 +346,7 @@ class ProductHandler extends MMH_Sync_Log
             $existing_product->set_category_ids($product_total_categories);
 
             if (isset($product_data['stock'])) {
-                $existing_product->set_stock_quantity($product_data['stock']->quantity);
+                $existing_product->set_stock_quantity($product_data['stock']['quantity']);
                 $existing_product->set_manage_stock(true);
             } else {
                 $existing_product->set_stock_quantity(0);
@@ -331,6 +354,7 @@ class ProductHandler extends MMH_Sync_Log
 
             $existing_product->set_price(str_replace(',', '.', $product_data['price']));
             $existing_product->set_regular_price(str_replace(',', '.', $product_data['price']));
+            $existing_product->set_sale_price(str_replace(',', '.', $product_data['_special']));
 
             if (isset($product_data['*notes'])) {
                 $existing_product->set_description($this->normalizeCharacters($product_data['*notes']));
@@ -351,10 +375,10 @@ class ProductHandler extends MMH_Sync_Log
                         $existing_product->update_meta_data('gender', 'Unisex');
                         break;
                     case str_contains($gender_string, 'Αγόρι'):
-                        $existing_product->update_meta_data('gender', 'Αγόρι');
+                        $existing_product->update_meta_data('gender', 'agori');
                         break;
                     case str_contains($gender_string, 'Κορίτσι'):
-                        $existing_product->update_meta_data('gender', 'Κορίτσι');
+                        $existing_product->update_meta_data('gender', 'koritsi');
                         break;
 
                     default:
@@ -418,15 +442,14 @@ class ProductHandler extends MMH_Sync_Log
             }
             if (isset($product_data['**image_names']) && $product_data['**image_names'] !== '') {
                 $image_ids_array = array();
-                $images_array = explode("\n", $product_data['**image_names']);
+                $images_array = explode("|", $this->normalizeCharacters($product_data['**image_names']));
                 $imageHandler = new ImageHandler();
                 $image_ids_array = $imageHandler->assignImagesToProduct($images_array);
+
                 if (count($image_ids_array) !== 0) {
-                    foreach ($image_ids_array as $image_id) {
-                        $existing_product->set_image_id($image_id);
-                        break;
-                    }
-                    $image_ids_array = array_shift($image_ids_array);
+                    $featured_image_id = array_shift($image_ids_array);
+                    $existing_product->set_image_id($featured_image_id);
+
                     $existing_product->set_gallery_image_ids($image_ids_array);
                 }
             }

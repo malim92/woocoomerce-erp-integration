@@ -3,7 +3,7 @@
 
 class ImageHandler
 {
-    private static $watermark_img_path = 'https://mama.com2go.co/wp-content/uploads/2023/11/viber_image_2023-11-20_17-05-14-897.png';
+    private static $watermark_img_path = 'http://mama.com2go.co/wp-content/uploads/2023/11/2023-11-28_18-37-31-291.png';
 
     public function assignImagesToProduct($images_array)
     {
@@ -14,9 +14,7 @@ class ImageHandler
 
         foreach ($images_array as $image) {
             $image_path = $image_folder . $image;
-
             if (file_exists($image_path)) {
-
                 $image_watermarked = $this->addWaterMark($image_path, $image);
                 $file = array(
                     'name'     => basename($image_watermarked),
@@ -42,16 +40,20 @@ class ImageHandler
         $originalWidth = imagesx($originalImage);
         $originalHeight = imagesy($originalImage);
 
-        // Get dimensions of the watermark image
-        $watermarkWidth = imagesx($watermarkImage);
-        $watermarkHeight = imagesy($watermarkImage);
+        // Resize the watermark image (adjust the scale factor as needed)
+        $scaleFactor = 1; // Change this value to control the size of the watermark
+        $resizedWidth = $scaleFactor * imagesx($watermarkImage);
+        $resizedHeight = $scaleFactor * imagesy($watermarkImage);
+
+        $resizedWatermark = imagescale($watermarkImage, $resizedWidth, $resizedHeight);
+
 
         // Calculate the position to place the watermark (e.g., bottom-right corner)
-        $positionX = ($originalWidth - $watermarkWidth) / 2;
-        $positionY = ($originalHeight - $watermarkHeight) / 2;
+        $positionX = ($originalWidth - $resizedWidth) / 2;
+        $positionY = ($originalHeight - $resizedHeight) / 2;
 
         // Overlay the watermark onto the original image
-        imagecopy($originalImage, $watermarkImage, $positionX, $positionY, 0, 0, $watermarkWidth, $watermarkHeight);
+        imagecopy($originalImage, $resizedWatermark, $positionX, $positionY, 0, 0, $resizedWidth, $resizedHeight);
 
         $watermarked_img_full_path = $_SERVER['DOCUMENT_ROOT'] . '/wp-content/watermarked/' . $imgName;
         $watermarked_image = imagejpeg($originalImage, $watermarked_img_full_path);
