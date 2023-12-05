@@ -3,7 +3,7 @@
 
 class ImageHandler
 {
-    private static $watermark_img_path = 'http://mama.com2go.co/wp-content/uploads/2023/11/2023-11-28_18-37-31-291.png';
+    private static $watermark_img_path = 'https://mama.com2go.co/wp-content/uploads/2023/12/2023-11-28_12-45-58-862.png';
 
     public function assignImagesToProduct($images_array)
     {
@@ -15,10 +15,10 @@ class ImageHandler
         foreach ($images_array as $image) {
             $image_path = $image_folder . $image;
             if (file_exists($image_path)) {
-                $image_watermarked = $this->addWaterMark($image_path, $image);
+                // $image_watermarked = $this->addWaterMark($image_path, $image);
                 $file = array(
-                    'name'     => basename($image_watermarked),
-                    'tmp_name' => $image_watermarked
+                    'name'     => basename($image_path),
+                    'tmp_name' => $image_path
                 );
 
                 $attachment_id = media_handle_sideload($file, 0);

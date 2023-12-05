@@ -75,7 +75,7 @@ class ProductHandler extends MMH_Sync_Log
 
     private function fetchStockData()
     {
-        $url = 'http://185.106.103.114:8080/$TableGetView?system=pos&file=itemloc&report=web_stock&compact=true';
+        $url = 'http://185.106.103.114:8080/$TableGetView?system=pos&file=itemloc&report=web_stock&compact=true&company=episkopou';
 
         $args = array(
             'timeout'     => 5,
@@ -101,8 +101,6 @@ class ProductHandler extends MMH_Sync_Log
         $results = json_decode($data, true);
 
         // $results = json_decode(wp_remote_retrieve_body(wp_remote_get($url, $args)));
-        error_log(print_r('$stockData $results', true));
-        error_log(print_r($results, true));
         return $results;
     }
 
@@ -187,8 +185,8 @@ class ProductHandler extends MMH_Sync_Log
         if (isset($product_data['*notes2'])) {
             $new_product->update_meta_data('notes_en', $this->normalizeCharacters($product_data['*notes2']));
         }
-        $new_product->set_regular_price(str_replace(',', '.', $product_data['price']));
-        $new_product->set_price(str_replace(',', '.', $product_data['price']));
+        $new_product->set_regular_price(str_replace(',', '.', $product_data['webprice']));
+        $new_product->set_price(str_replace(',', '.', $product_data['webprice']));
         $new_product->set_sale_price(str_replace(',', '.', $product_data['_special']));
 
         if (isset($product_data['design'])) {
@@ -197,17 +195,17 @@ class ProductHandler extends MMH_Sync_Log
 
             switch ($gender_string) {
                 case str_contains($gender_string, 'Unisex'):
-                    $new_product->update_meta_data('gender', 'Unisex');
+                    $new_product->update_meta_data('gender', 'Unisex,boy,girl');
                     break;
                 case str_contains($gender_string, 'Αγόρι'):
-                    $new_product->update_meta_data('gender', 'agori');
+                    $new_product->update_meta_data('gender', 'boy');
                     break;
                 case str_contains($gender_string, 'Κορίτσι'):
-                    $new_product->update_meta_data('gender', 'koritsi');
+                    $new_product->update_meta_data('gender', 'girl');
                     break;
 
                 default:
-                    $new_product->update_meta_data('gender', 'Unisex');
+                    $new_product->update_meta_data('gender', 'Unisex,boy,girl');
                     break;
             }
         }
@@ -352,8 +350,8 @@ class ProductHandler extends MMH_Sync_Log
                 $existing_product->set_stock_quantity(0);
             }
 
-            $existing_product->set_price(str_replace(',', '.', $product_data['price']));
-            $existing_product->set_regular_price(str_replace(',', '.', $product_data['price']));
+            $existing_product->set_price(str_replace(',', '.', $product_data['webprice']));
+            $existing_product->set_regular_price(str_replace(',', '.', $product_data['webprice']));
             $existing_product->set_sale_price(str_replace(',', '.', $product_data['_special']));
 
             if (isset($product_data['*notes'])) {
@@ -372,17 +370,17 @@ class ProductHandler extends MMH_Sync_Log
 
                 switch ($gender_string) {
                     case str_contains($gender_string, 'Unisex'):
-                        $existing_product->update_meta_data('gender', 'Unisex');
+                        $existing_product->update_meta_data('gender', 'Unisex,boy,girl');
                         break;
                     case str_contains($gender_string, 'Αγόρι'):
-                        $existing_product->update_meta_data('gender', 'agori');
+                        $existing_product->update_meta_data('gender', 'boy');
                         break;
                     case str_contains($gender_string, 'Κορίτσι'):
-                        $existing_product->update_meta_data('gender', 'koritsi');
+                        $existing_product->update_meta_data('gender', 'girl');
                         break;
 
                     default:
-                        $existing_product->update_meta_data('gender', 'Unisex');
+                        $existing_product->update_meta_data('gender', 'Unisex,boy,girl');
                         break;
                 }
             }
@@ -390,8 +388,15 @@ class ProductHandler extends MMH_Sync_Log
             if (isset($product_data['barcode'])) {
                 $existing_product->update_meta_data('barcode', $product_data['barcode']);
             }
+
+            $product_id = $existing_product->get_id();
+
             if (isset($product_data['brand'])) {
-                $existing_product->update_meta_data('brand', $this->normalizeCharacters(mb_strtolower($product_data['brand'])));
+                // $existing_product->update_meta_data('brand', $this->normalizeCharacters(mb_strtolower($product_data['brand'])));
+
+                $brands_array = explode(" | ", $this->normalizeCharacters($product_data['brand']));
+                $brandHandler = new BrandHandler();
+                $brandHandler->handleBrands($brands_array, $product_id);
             }
             if (isset($product_data['supplier'])) {
                 $existing_product->update_meta_data('supplier', $this->normalizeCharacters(mb_strtolower($product_data['supplier'])));
@@ -419,7 +424,6 @@ class ProductHandler extends MMH_Sync_Log
 
                 $product_type = 'variable';
 
-                $product_id = $existing_products[0]->get_id();
                 $attribute_obj = $attributeHandler->productAttributeHandler($product_id, 'color', $colors_array);
 
                 error_log(print_r('$attribute_obj 2', true));
