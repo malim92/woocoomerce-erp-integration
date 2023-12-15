@@ -37,6 +37,7 @@ class ProductHandler extends MMH_Sync_Log
                 $products = json_decode($json_data, true);
 
                 $stockData = $this->fetchStockData();
+                // $stockData = $this->fetchStockFile();
                 // error_log(print_r('$stockData', true));
                 // error_log(print_r($stockData, true));
                 $stockMapping = array();
@@ -92,7 +93,6 @@ class ProductHandler extends MMH_Sync_Log
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
-        // curl_setopt($ch, CURLOPT_USERPWD, 'api2' . ":" . 'api2');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 25);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Disable SSL certificate verification (not recommended for production)
@@ -102,6 +102,21 @@ class ProductHandler extends MMH_Sync_Log
 
         // $results = json_decode(wp_remote_retrieve_body(wp_remote_get($url, $args)));
         return $results;
+    }
+    private function fetchStockFile()
+    {
+        $file = ABSPATH . 'mmh/stock.json';
+        $file_type = wp_check_filetype($file['name'], array('json' => 'application/json'));
+
+            if ($file_type['ext'] === 'json') {
+                // Read JSON data
+                $json_data = file_get_contents($file);
+
+                // Parse JSON data
+                $productsStock = json_decode($json_data, true);
+            }
+
+        return $productsStock;
     }
 
     private function productCheck($product_data)
@@ -177,6 +192,7 @@ class ProductHandler extends MMH_Sync_Log
             $new_product->set_manage_stock(true);
         } else {
             $new_product->set_stock_quantity(0);
+            $new_product->set_stock_status('outofstock');
         }
 
         if (isset($product_data['*notes'])) {
@@ -187,7 +203,7 @@ class ProductHandler extends MMH_Sync_Log
         }
         $new_product->set_regular_price(str_replace(',', '.', $product_data['webprice']));
         $new_product->set_price(str_replace(',', '.', $product_data['webprice']));
-        $new_product->set_sale_price(str_replace(',', '.', $product_data['_special']));
+        // $new_product->set_sale_price(str_replace(',', '.', $product_data['_special']));
 
         if (isset($product_data['design'])) {
             // $gender_array = explode('|', $this->normalizeCharacters(mb_strtolower($product_data['design'])));
@@ -342,17 +358,21 @@ class ProductHandler extends MMH_Sync_Log
             }
 
             $existing_product->set_category_ids($product_total_categories);
+            // error_log(print_r($product_data['stock'], true));
+            // error_log(print_r('$product_data stock', true));
 
             if (isset($product_data['stock'])) {
                 $existing_product->set_stock_quantity($product_data['stock']['quantity']);
                 $existing_product->set_manage_stock(true);
             } else {
+                // error_log(print_r('no stock', true));
                 $existing_product->set_stock_quantity(0);
+                $existing_product->set_stock_status('outofstock');
             }
 
             $existing_product->set_price(str_replace(',', '.', $product_data['webprice']));
             $existing_product->set_regular_price(str_replace(',', '.', $product_data['webprice']));
-            $existing_product->set_sale_price(str_replace(',', '.', $product_data['_special']));
+            $existing_product->set_sale_price(null);
 
             if (isset($product_data['*notes'])) {
                 $existing_product->set_description($this->normalizeCharacters($product_data['*notes']));
