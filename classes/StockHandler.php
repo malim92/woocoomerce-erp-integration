@@ -1,33 +1,49 @@
 <?php
-class StockHandler extends MMH_Sync_Log
+class StockHandler extends StockLog
 {
-    public function fetchStockData($fromDate, $toDate)
+    public function fetchStockData($dynamicDate, $lastHour)
     {
-        //http://185.106.103.114:8080/$TableGetView?system=pos&file=itemloc&report=web_stock&compact=true&company=episkopou&driving=@modify_stamp&from=2023-12-13 08:00&to=2023-12-16 11:00
-        $fromDate = '2023-12-13 08:00';
-        $toDate = '2023-12-16 11:00';
-        $url = 'http://185.106.103.114:8080/$TableGetView?system=pos&file=itemloc&report=web_stock&compact=true&company=episkopou&driving=@modify_stamp&from=' . $fromDate . '&to=' . $toDate;
 
-        $args = array(
-            'timeout'     => 155,
-            'redirection' => 10,
-            'httpversion' => '1.0',
-            'blocking'    => true,
-            'body'        => null,
-            'compress'    => false,
-            'decompress'  => true,
-            'sslverify'   => false,
-            'stream'      => false,
-            'filename'    => null
-        );
-        
-        $results = json_decode(wp_remote_retrieve_body(wp_remote_get($url, $args)));
-        return $results;
+
+        $url = 'http://185.106.103.114:8080/$TableGetView?system=pos&file=itemloc&report=web_stock&compact=true&company=episkopou&driving=@modify_stamp&from=' . $lastHour . '&to=' . $dynamicDate;
+
+        $zeroStockUrl = 'http://185.106.103.114:8080/$TableGetView?system=pos&file=itemloc&report=web_zero&compact=true&company=episkopou&driving=@modify_stamp&from=' . $lastHour . '&to=' . $dynamicDate;
+        $url = preg_replace('/\s+/', '%20', $url);
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 125);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Disable SSL certificate verification (not recommended for production)
+        $data = curl_exec($ch);
+        curl_close($ch);
+        $normalStockArray = json_decode($data, true);
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $zeroStockUrl);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 125);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Disable SSL certificate verification (not recommended for production)
+        $data = curl_exec($ch);
+        curl_close($ch);
+        $zeroStockArray = json_decode($data, true);
+
+        $stockArray = array_merge($normalStockArray, $zeroStockArray);
+
+        if (!$stockArray) {
+            $this->createLog([
+                'sku' => null,
+                'status' => 'empty stock array',
+                'msg' => 'No stock to update',
+            ]);
+            return;
+        }
+        return $stockArray;
     }
 
-    public function StockUpdate($fromDate, $toDate)
+    public function StockUpdate($dynamicDate, $lastHour)
     {
-        $stockData = $this->fetchStockData($fromDate, $toDate);
+        $stockData = $this->fetchStockData($dynamicDate, $lastHour);
         $ProductHandler = new ProductHandler();
         foreach ($stockData as $stockItem) {
 
@@ -36,13 +52,46 @@ class StockHandler extends MMH_Sync_Log
             if ($_product_id == 0)
                 $_product_id = wc_get_product_id_by_sku($_product_id);
             if ($_product_id > 0) {
-                
+
                 $existing_product = wc_get_product($_product_id);
 
-                $existing_product->set_stock_quantity($stockItem->quantity);
-                $existing_product->set_manage_stock(true);
+                if (isset($stockItem->quantity)) {
+                    $existing_product->set_stock_quantity($stockItem->quantity);
+                    $existing_product->set_manage_stock(true);
+                } else {
+                    $existing_product->set_stock_quantity(0);
+                    $existing_product->set_stock_status('outofstock');
+                }
                 $existing_product->save();
+                $this->createLog([
+                    'sku' => $itemCode,
+                    'status' => 'Success',
+                    'msg' => 'Stock updated successfully',
+                ]);
+            }
+            if (is_wp_error($existing_product)) {
+                $error_string = $existing_product->get_error_message();
+                $this->createLog([
+                    'sku' => $itemCode,
+                    'status' => 'Success',
+                    'msg' => $error_string,
+                ]);
             }
         }
+    }
+
+    public function fetchAllStockData(){
+        $url = 'http://185.106.103.114:8080/$TableGetView?system=pos&file=itemloc&report=web_stock&compact=true&company=episkopou';
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 125);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Disable SSL certificate verification (not recommended for production)
+        $data = curl_exec($ch);
+        curl_close($ch);
+        $normalStockArray = json_decode($data, true);
+
+        return $normalStockArray;
     }
 }

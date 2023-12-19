@@ -1,13 +1,5 @@
 <?php
 
-/*
-number of products to show in category page
-remaining for free shipping
-remove shipping only to gr and cy
-add girft wrap 1 euro
-show meta capital
-
-*/
 class ProductHandler extends MMH_Sync_Log
 {
     // Constructor, initialize actions and filters
@@ -16,13 +8,70 @@ class ProductHandler extends MMH_Sync_Log
         add_action('admin_init', array($this, 'handle_json_upload'));
     }
 
+    public function fetchItems()
+    {
+        error_log(print_r('in fetchitems ', true));
+
+        $currentDateTime = new DateTime();
+        $dynamicDate = $currentDateTime->format('Y-m-d H:00');
+        $currentDateTime->modify('-15 minutes');
+        $lastHour = $currentDateTime->format('Y-m-d H:00');
+
+        $url = 'http://185.106.103.114:8080/$TableGetView?system=pos&file=item&report=web_items&compact=true&company=episkopou&driving=@modify_stamp&from=' . $lastHour . '&to=' . $dynamicDate;
+        $url = preg_replace('/\s+/', '%20', $url);
+
+        error_log(print_r('$url', true));
+        error_log(print_r($url, true));
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 125);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Disable SSL certificate verification (not recommended for production)
+        $data = curl_exec($ch);
+        curl_close($ch);
+        $products = json_decode($data, true);
+
+        // error_log(print_r('$products', true));
+        // error_log(print_r($products, true));
+        if (!$products) {
+            $this->createLog([
+                'action' => 'fetchItems',
+                'type' => 'empty',
+                'type_id' => '',
+                'msg' => 'No products to update',
+            ]);
+            return;
+        }
+
+        $currentDateTime = new DateTime();
+        $dynamicDate = $currentDateTime->format('Y-m-d H:00');
+        $currentDateTime->modify('-15 minutes');
+        $lastHour = $currentDateTime->format('Y-m-d H:00');
+
+        $StockHandler = new StockHandler();
+        $stockData = $StockHandler->fetchStockData($dynamicDate, $lastHour);
+        $stockMapping = array();
+        foreach ($stockData as $stockItem) {
+            $itemCode = $stockItem['item.code'];
+            $stockMapping[$itemCode] = $stockItem;
+        }
+
+        foreach ($products as $product_data) {
+            //appending the stock object
+            $code = $product_data['code'];
+            if (isset($stockMapping[$code])) {
+                $product_data['stock'] = $stockMapping[$code];
+            }
+            $this->productCheck($product_data);
+        }
+    }
+
+
     // Method to handle JSON file upload
     public function handle_json_upload()
     {
-        // error_log(print_r('$_FILES', true));
-        // error_log(print_r($_FILES, true));
-        // error_log(print_r('$_POST', true));
-        // error_log(print_r($_POST, true));
+
         if (isset($_FILES['json_upload'])) {
             $file = $_FILES['json_upload'];
 
@@ -36,7 +85,8 @@ class ProductHandler extends MMH_Sync_Log
                 // Parse JSON data
                 $products = json_decode($json_data, true);
 
-                $stockData = $this->fetchStockData();
+                $StockHandler = new StockHandler();
+                $stockData = $StockHandler->fetchAllStockData();
                 // $stockData = $this->fetchStockFile();
                 // error_log(print_r('$stockData', true));
                 // error_log(print_r($stockData, true));
@@ -74,47 +124,18 @@ class ProductHandler extends MMH_Sync_Log
         }
     }
 
-    private function fetchStockData()
-    {
-        $url = 'http://185.106.103.114:8080/$TableGetView?system=pos&file=itemloc&report=web_stock&compact=true&company=episkopou';
-
-        $args = array(
-            'timeout'     => 5,
-            'redirection' => 10,
-            'httpversion' => '1.0',
-            'blocking'    => true,
-            'body'        => null,
-            'compress'    => false,
-            'decompress'  => true,
-            'sslverify'   => false,
-            'stream'      => false,
-            'filename'    => null
-        );
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 25);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Disable SSL certificate verification (not recommended for production)
-        $data = curl_exec($ch);
-        curl_close($ch);
-        $results = json_decode($data, true);
-
-        // $results = json_decode(wp_remote_retrieve_body(wp_remote_get($url, $args)));
-        return $results;
-    }
     private function fetchStockFile()
     {
         $file = ABSPATH . 'mmh/stock.json';
         $file_type = wp_check_filetype($file['name'], array('json' => 'application/json'));
 
-            if ($file_type['ext'] === 'json') {
-                // Read JSON data
-                $json_data = file_get_contents($file);
+        if ($file_type['ext'] === 'json') {
+            // Read JSON data
+            $json_data = file_get_contents($file);
 
-                // Parse JSON data
-                $productsStock = json_decode($json_data, true);
-            }
+            // Parse JSON data
+            $productsStock = json_decode($json_data, true);
+        }
 
         return $productsStock;
     }
@@ -324,18 +345,18 @@ class ProductHandler extends MMH_Sync_Log
         $product_additional_categories = array();
         $product_type = 'simple';
 
-        if (isset($product_data['_colorss']) && $product_data['_colorss']) {
+        if (isset($product_data['_colors']) && $product_data['_colors']) {
             $product_type = 'variable';
         }
 
-        // if ($product_type === 'variable') {
-        //     $existing_product = new WC_Product_Variable();
-        // } else {
-        //     $existing_product = new WC_Product_Simple();
-        // }
+        if ($product_type === 'variable') {
+            $existing_product = new WC_Product_Variable();
+        } else {
+            $existing_product = new WC_Product_Simple();
+        }
 
         if (!empty($existing_product)) {
-            // $existing_product = reset($existing_products);
+            $existing_product = reset($existing_products);
             // error_log(print_r('$product_data 6', true));
             // error_log(print_r($existing_product, true));
             $existing_product->set_name($this->normalizeCharacters($product_data['name']));
@@ -438,12 +459,11 @@ class ProductHandler extends MMH_Sync_Log
                 $existing_product->set_height($dimensions['height']);
             }
 
-            if (isset($product_data['_colorss']) && $product_data['_colorss']) {
-                $attributeHandler = new AttributeHandler();
+            if (isset($product_data['_colors']) && $product_data['_colors']) {
+
                 $colors_array = explode('|', $product_data['_colors']);
 
-                $product_type = 'variable';
-
+                $attributeHandler = new AttributeHandler();
                 $attribute_obj = $attributeHandler->productAttributeHandler($product_id, 'color', $colors_array);
 
                 error_log(print_r('$attribute_obj 2', true));

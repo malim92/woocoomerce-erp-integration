@@ -12,13 +12,9 @@ class BrandHandler
                 $this->createBrand($brand);
             } else {
                 $term_info = get_term_by('name', $brand, 'yith_product_brand');
-                error_log(print_r('$brand 2', true));
-                error_log(print_r($brand, true));
-                error_log(print_r('$term_info 2', true));
-                error_log(print_r($term_info, true));
+                
                 $new_taxonomy_id = $term_info->term_id;
-                error_log(print_r('$new_taxonomy_id 3', true));
-                error_log(print_r($new_taxonomy_id, true));
+                
                 wp_set_object_terms($product_id, $new_taxonomy_id, 'yith_product_brand', true);
             }
         }
@@ -26,11 +22,9 @@ class BrandHandler
 
     private function brandExist($brand)
     {
-        error_log(print_r('$brand 2x', true));
-        error_log(print_r($brand, true));
+        
         $taxonomy_exists = term_exists(sanitize_title($brand), 'yith_product_brand');
-        error_log(print_r('$taxonomy_exists 2', true));
-        error_log(print_r($taxonomy_exists, true));
+       
         return $taxonomy_exists;
     }
 

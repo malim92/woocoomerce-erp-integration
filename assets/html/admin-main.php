@@ -10,11 +10,17 @@
 
 if (isset($_POST['mmh_submit'])) {
 
+   if ($_POST['data_source'] == 'json') {
+      $product_handler = new ProductHandler();
+      $handleJson = $product_handler->handle_json_upload();
+      return;
+   }
+
    // $product_handler = new ProductHandler();
    // $handleJson = $product_handler->handle_json_upload();
    // error_log(print_r($handleJson, true));
 
-   $api_url = sanitize_text_field($_POST['mmh_api_url']);
+   // $api_url = sanitize_text_field($_POST['mmh_api_url']);
 
    $update_frequency = sanitize_text_field($_POST['update_frequency']);
    $is_active = isset($_POST['activate_cron_mmh']) ? 1 : 0;
@@ -31,23 +37,31 @@ if (isset($_POST['mmh_submit'])) {
       add_option('activate_cron_mmh', $is_active);
    }
    if ($is_active) {
-      wp_schedule_event(time(), 'hourly', 'mmh_product_import_cron');
+
+      if (get_option('activate_cron_mmh') !== false) {
+
+         if (!wp_next_scheduled('mmh_product_import_cron')) {
+            wp_schedule_event(time(), 'every_15_minutes', 'mmh_product_import_cron');
+         }
+         if (!wp_next_scheduled('mmh_stock_import_cron')) {
+            wp_schedule_event(time(), 'every_5_minutes', 'mmh_stock_import_cron');
+         }
+      }
+      // wp_schedule_event(time(), 'hourly', 'mmh_product_import_cron');
+
+      // Hook the product import function to the scheduled cron event
+
    } else {
       wp_clear_scheduled_hook('mmh_product_import_cron');
    }
 
-   if (get_option('mmh_api_url') !== false) {
-      update_option('mmh_api_url', $api_url);
-   } else {
-      add_option('mmh_api_url', $api_url);
-   }
+   // if (get_option('mmh_api_url') !== false) {
+   //    update_option('mmh_api_url', $api_url);
+   // } else {
+   //    add_option('mmh_api_url', $api_url);
+   // }
 }
 
-function run_product_import_cron()
-{
-   $product_handler = new ProductHandler();
-   $handleJson = $product_handler->handle_json_upload();
-}
 
 
 ?>
@@ -55,8 +69,8 @@ function run_product_import_cron()
    <h2>MMH Integration plugin</h2>
    <div class="row">
       <form method="post" action="" enctype="multipart/form-data">
-         <label for="activate_cron">Activate import:</label>
-         <input type="checkbox" id="activate_cron" name="activate_cron" <?php checked(get_option('activate_cron_mmh'), 1, false)  ?>><br>
+         <label for="activate_cron_mmh">Activate import:</label>
+         <input type="checkbox" id="activate_cron_mmh" name="activate_cron_mmh" <?php if (get_option('activate_cron_mmh') == 1) echo 'checked'  ?>><br>
 
          <label for="data_source">Data Source:</label>
          <select id="data_source" name="data_source">

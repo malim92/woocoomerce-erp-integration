@@ -14,28 +14,27 @@ if (!defined('ABSPATH')) {
     exit;
 } // Exit if accessed directly
 
-require_once(plugin_dir_path(__FILE__) . 'classes/Log.php');
+require_once(plugin_dir_path(__FILE__) . 'classes/loggers/Log.php');
+require_once(plugin_dir_path(__FILE__) . 'classes/loggers/StockLog.php');
 require_once(plugin_dir_path(__FILE__) . 'classes/ProductHandler.php');
 require_once(plugin_dir_path(__FILE__) . 'classes/ImageHandler.php');
 require_once(plugin_dir_path(__FILE__) . 'classes/AttributeHandler.php');
 require_once(plugin_dir_path(__FILE__) . 'classes/BrandHandler.php');
 require_once(plugin_dir_path(__FILE__) . 'classes/StockHandler.php');
 
-function activate_mmh_integration_plugin()
-{
-    wp_schedule_event(time(), 'hourly', 'mmh_product_import_cron');
-}
-register_activation_hook(__FILE__, 'activate_mmh_integration_plugin');
+// function activate_mmh_integration_plugin()
+// {
+//     wp_schedule_event(time(), 'hourly', 'mmh_product_import_cron');
+// }
+// register_activation_hook(__FILE__, 'activate_mmh_integration_plugin');
 
 // Unschedule the cron event on plugin deactivation
 function deactivate_mmh_integration_plugin()
 {
     wp_clear_scheduled_hook('mmh_product_import_cron');
+    wp_clear_scheduled_hook('mmh_stock_import_cron');
 }
 register_deactivation_hook(__FILE__, 'deactivate_mmh_integration_plugin');
-
-// Hook the product import function to the scheduled cron event
-add_action('mmh_product_import_cron', 'run_product_import_cron');
 
 
 function MMH_admin_page()
@@ -48,6 +47,28 @@ function MMH_admin_page()
 
     echo '</div>';
 }
+
+function run_product_import_cron()
+{
+    error_log(print_r('in run_product_import_cron ', true));
+    $product_handler = new ProductHandler();
+    $product_handler->fetchItems();
+}
+
+function run_stock_import_cron()
+{
+    error_log(print_r('in run_stock_import_cron ', true));
+    $currentDateTime = new DateTime();
+    $dynamicDate = $currentDateTime->format('Y-m-d H:00');
+    $currentDateTime->modify('-5 minutes');
+    $lastHour = $currentDateTime->format('Y-m-d H:00');
+    $stock_handler = new StockHandler();
+    $stock_handler->StockUpdate($dynamicDate, $lastHour);
+}
+// Hook the cron job to your function
+add_action('mmh_product_import_cron', 'run_product_import_cron');
+add_action('mmh_stock_import_cron', 'run_stock_import_cron');
+
 
 function stock_update_callback()
 {
@@ -73,28 +94,10 @@ function mmh_integration_menu()
     add_submenu_page(
         'mmh-integration', // Parent menu slug
         'Stock update', //$page_title
-        'Stock update',//menu_title
-        'manage_options',//capability
+        'Stock update', //menu_title
+        'manage_options', //capability
         'stock-update', //menu_slug
         'stock_update_callback' //callback 
     );
-
 }
 add_action('admin_menu', 'mmh_integration_menu');
-
-
-function your_submenu_page_1_callback()
-{
-    echo '<div class="wrap">';
-    echo '<h2>Submenu Page 1</h2>';
-    // Add your content for the first submenu page.
-    echo '</div>';
-}
-
-function your_submenu_page_2_callback()
-{
-    echo '<div class="wrap">';
-    echo '<h2>Submenu Page 2</h2>';
-    // Add your content for the second submenu page.
-    echo '</div>';
-}
