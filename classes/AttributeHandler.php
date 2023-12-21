@@ -2,122 +2,130 @@
 
 class AttributeHandler
 {
-    private function productAttributeCheck($attribute_name)
+
+    public function productAttributeHandler($product, $colors_array)
     {
-        $attribute_id = wc_attribute_taxonomy_id_by_name($attribute_name);
 
-        if ($attribute_id) {
-            $attribute_object = wc_get_attribute($attribute_id);
-            error_log(print_r('$attribute_object 0', true));
-            error_log(print_r($attribute_object, true));
-            return $attribute_object;
-        } else return false;
-    }
-
-    public function productAttributeHandler($product_id , $attribute_name, $colors_array)
-    {
-        // Check if the attribute exists
-        $attribute_obj = $this->productAttributeCheck($attribute_name);
-        if (!$attribute_obj) {
-            // Create the attribute
-            $attribute_args = array(
-                'name' => $attribute_name,
-                'type' => 'select',
-            );
-
-            $attribute_id = wc_create_attribute($attribute_args);
-
-            if (!$attribute_id) {
-                return false;
-            }
-        }
-
-        if (!taxonomy_exists('pa_color')) {
-            // Register the taxonomy
-            register_taxonomy(
-                'pa_color',
-                'product',
-                array(
-                    'label' => __('Color', 'color'),
-                    'public' => false,
-                    'rewrite' => false,
-                    'hierarchical' => true,
-                    'show_ui' => false,
-                )
-            );
-        }
+        $attributes = array();
         foreach ($colors_array as $color) {
+            
             if (!term_exists($color, 'pa_color')) {
                 $term_data = wp_insert_term($color, 'pa_color');
-                error_log(print_r('$term_data 0', true));
-                error_log(print_r($term_data, true));
                 $term_id   = $term_data['term_id'];
             } else {
-                $term_id   = get_term_by('name', $color, 'pa_color')->term_id;
-                error_log(print_r('$term_id 0', true));
-                error_log(print_r($term_id, true));
+                $term_id   = get_term_by('name', $color, 'pa_color');
+                if (isset($term_id->term_id))
+                $term_id = $term_id->term_id;
+                else continue;
             }
-            error_log(print_r('$ewrd 0', true));
-            
-            $ewrd = wp_set_object_terms($product_id,intval($term_id) , 'pa_color');
-            error_log(print_r('$ewrd 1', true));
-            error_log(print_r($ewrd, true));
+            array_push($attributes, $term_id);
         }
-        
-        return $attribute_obj;
+
+        $attributes_arr =
+            array(
+                'id' => wc_attribute_taxonomy_id_by_name('pa_color'),
+                'name' => 'pa_color',
+                'options' => $attributes,
+                'position' => 1,
+                'visible' => true,
+                'variation' => true,
+            );
+
+        if ($attributes_arr) {
+
+            $attribute = new WC_Product_Attribute();
+            if (isset($attributes_arr['id'])) {
+                $attribute->set_id($attributes_arr['id']);
+            }
+            $attribute->set_name($attributes_arr['name']);
+            $attribute->set_options($attributes_arr['options']);
+            $attribute->set_position($attributes_arr['position']);
+            $attribute->set_visible($attributes_arr['visible']);
+            $attribute->set_variation($attributes_arr['variation']);
+            $attributes[] = $attribute;
+        }
+
+        $product->set_attributes($attributes);
+
+        return $product;
     }
 
-    public function createOrUpdateVariation($product_id, $variation_data)
+
+    public function createVariation($product_id, $variation_data, $stock_quantity, $price)
     {
-        // Check if variation exists
-        $variation_id = $this->getVariationIdByAttributes($product_id, $variation_data['attributes']);
-        error_log(print_r('$variation_id 0', true));
-        error_log(print_r($variation_id, true));
-        if ($variation_id) {
-            $this->updateVariation($variation_id, $variation_data);
-        } else {
-            $variation_id = $this->createVariation($product_id, $variation_data);
-        }
+        $stock_quantity = $this->formatStockArray($stock_quantity);
 
-        return $variation_id;
+        foreach ($variation_data as $color) {
+            $term = term_exists($color, 'pa_color');
+            if (!$term) {
+
+                $term = wp_insert_term($color, 'pa_color', array('slug' => $color));
+                if (!is_wp_error($term) && isset($term['term_id'])) {
+                    $term_id = $term['term_id'];
+                } else {
+                    $error_message = is_wp_error($term) ? $term->get_error_message() : 'Unknown error';
+                    error_log(print_r('Error creating term: ' . $error_message, true));
+                }
+            } else {
+                $term_id = $term['term_id'];
+            }
+            $term_obj = get_term_by('id', $term_id, 'pa_color');
+            $slug = $term_obj->slug;
+
+            $slug = $term_obj->slug;
+            $color = str_replace("\r\n", ' ', strtolower($color));
+
+            $variationStock = isset($stock_quantity[$color]) ? $stock_quantity[$color] : $stock_quantity[';'];
+            $variation = new WC_Product_Variation();
+            $variation->set_parent_id($product_id);
+
+            $variation->set_attributes(array('pa_color' => $slug));
+            $variation->set_manage_stock(true);
+            $variation->set_stock_quantity($variationStock);
+            $variation->set_regular_price($price);
+            $variation->save();
+        }
+        return;
     }
 
-    private function getVariationIdByAttributes($product_id, $attributes)
+    private function formatStockArray($jsonData)
+    {
+        // $jsonData = json_decode($data, true);
+        if (
+            is_array($jsonData) && count($jsonData) > 0 && key($jsonData) !== ';'
+        ) {
+            foreach ($jsonData as $key => $value) {
+                $newKey = strtolower(rtrim($key, ';'));
+                unset($jsonData[$key]);
+                $jsonData[$newKey] = $value;
+            }
+        } else if (isset($jsonData[';'])) {
+            $jsonData = $jsonData[';'];
+        }
+        return $jsonData;
+    }
+
+    public function checkVariationExist($colors_array, $product_id)
     {
         $variations = get_posts(array(
-            'post_type' => 'product_variation',
-            'post_status' => array('private', 'publish'),
-            'numberposts' => 1,
-            'meta_query' => array(
-                array(
-                    'key' => 'pa_color',
-                    'value' => $attributes['color'],
-                ),
-            ),
-            'post_parent' => $product_id,
+            'post_type'     => 'product_variation',
+            'post_status'   => 'publish',
+            'numberposts'   => -1,
+            'post_parent'   => $product_id,
         ));
-        error_log(print_r('$variations 3', true));
-        error_log(print_r($variations, true));
-        return (empty($variations)) ? 0 : $variations[0]->ID;
-    }
 
-    private function createVariation($product_id, $variation_data)
-    {
-        error_log(print_r('$product_id 4', true));
-        error_log(print_r($product_id, true));
-        $variation = new WC_Product_Variation();
-        $variation->set_parent_id($product_id);
-        $variation->set_attributes($variation_data['attributes']);
-        // $variation->set_sku($variation_data['sku']);
-        $variation->set_regular_price($variation_data['regular_price']);
-        // $variation->set_sale_price($variation_data['sale_price']);
-        $variation->set_stock_quantity($variation_data['stock_quantity']);
-        $variation->set_manage_stock($variation_data['manage_stock']);
+        
+        foreach ($variations as $key => $variation) {
+            $variation_id = $variation->ID;
+            $variation_attributes = wc_get_product_variation_attributes($variation_id);
 
-        $variation_id = $variation->save();
-        error_log(print_r('$variation_id 4', true));
-        error_log(print_r($variation_id, true));
-        return $variation_id;
+            $color_key = array_search(strtolower(str_replace("-", ' ', $variation_attributes['attribute_pa_color'])), $colors_array);
+            if ($color_key !== false) {
+                unset($colors_array[$color_key]);
+            }
+        }
+
+        return $colors_array;
     }
 
     private function updateVariation($variation_id, $variation_data)

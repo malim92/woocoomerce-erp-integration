@@ -8,6 +8,7 @@ class BrandHandler
         foreach ($brands_array as $brand) {
 
             $taxonomy_exists = $this->brandExist($brand);
+
             if (!$taxonomy_exists) {
                 $this->createBrand($brand);
             } else {

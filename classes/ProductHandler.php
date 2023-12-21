@@ -10,7 +10,6 @@ class ProductHandler extends MMH_Sync_Log
 
     public function fetchItems()
     {
-        error_log(print_r('in fetchitems ', true));
 
         $currentDateTime = new DateTime();
         $dynamicDate = $currentDateTime->format('Y-m-d H:00');
@@ -19,9 +18,6 @@ class ProductHandler extends MMH_Sync_Log
 
         $url = 'http://185.106.103.114:8080/$TableGetView?system=pos&file=item&report=web_items&compact=true&company=episkopou&driving=@modify_stamp&from=' . $lastHour . '&to=' . $dynamicDate;
         $url = preg_replace('/\s+/', '%20', $url);
-
-        error_log(print_r('$url', true));
-        error_log(print_r($url, true));
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
@@ -44,13 +40,11 @@ class ProductHandler extends MMH_Sync_Log
             return;
         }
 
-        $currentDateTime = new DateTime();
-        $dynamicDate = $currentDateTime->format('Y-m-d H:00');
-        $currentDateTime->modify('-15 minutes');
-        $lastHour = $currentDateTime->format('Y-m-d H:00');
+        $currentDateTime = date("Y-m-d H:i:s");
+        $pastDateTime = date("Y-m-d H:i:s", strtotime("-15 minutes"));
 
         $StockHandler = new StockHandler();
-        $stockData = $StockHandler->fetchStockData($dynamicDate, $lastHour);
+        $stockData = $StockHandler->fetchStockData($currentDateTime, $pastDateTime);
         $stockMapping = array();
         foreach ($stockData as $stockItem) {
             $itemCode = $stockItem['item.code'];
@@ -146,10 +140,6 @@ class ProductHandler extends MMH_Sync_Log
         if ($_product_id == 0)
             $_product_id = wc_get_product_id_by_sku($product_data['code']);
 
-        // error_log(print_r('pro code normalized', true));
-        // error_log(print_r($this->normalizeCharacters($product_data['code']), true));
-        // error_log(print_r('$_product_id', true));
-        // error_log(print_r($_product_id, true));
         if ($_product_id > 0) {
             $existing_products = wc_get_product($_product_id);
 
@@ -167,17 +157,18 @@ class ProductHandler extends MMH_Sync_Log
         $product_type = 'simple'; // Default to simple product
 
         // Check if the product should be a variable product
-        if (isset($product_data['_colorss']) && $product_data['_colorss']) {
+        if (isset($product_data['_colors']) && $product_data['_colors']) {
             $product_type = 'variable';
         }
 
         if ($product_type == 'variable') {
             $new_product = new WC_Product_Variable();
+            $StockHandler = new StockHandler();
+            $variationStock = $StockHandler->variationStock($this->normalizeCharacters($product_data['code']));
         } else {
             $new_product = new WC_Product_Simple();
         }
-        // error_log(print_r('$new_product 4', true));
-        // error_log(print_r($new_product, true));
+
         if (!$new_product) {
             $this->createLog([
                 'action' => 'createProduct',
@@ -292,31 +283,17 @@ class ProductHandler extends MMH_Sync_Log
         // Save the product
         $new_product_id = $new_product->save();
 
-        if (isset($product_data['_colorss']) && $product_data['_colorss']) {
+        if (isset($product_data['_colors']) && $product_data['_colors']) {
             $attributeHandler = new AttributeHandler();
             $colors_array = explode('|', $product_data['_colors']);
 
             $product_type = 'variable';
 
             // $product_id = $new_product[0]->get_id();
-            $attribute_id = $attributeHandler->productAttributeHandler('color', $colors_array);
+            $new_product = $attributeHandler->productAttributeHandler($new_product, $colors_array);
 
-
-            $new_product->set_attributes(array('color' => 'color'));
-
-            foreach ($colors_array as $color) {
-
-                $variation_data = array(
-                    'attributes' => array(
-                        'color' => $color,
-                    ),
-                    'regular_price' => $product_data['_colors'],
-                    // 'sale_price' => '',
-                    'stock_quantity' => 10,
-                    'manage_stock' => true,
-                );
-                $variation_id = $attributeHandler->createOrUpdateVariation($new_product_id, $variation_data);
-            }
+            $attributeHandler->createVariation($new_product_id, $colors_array, $variationStock, str_replace(',', '.', $product_data['webprice']));
+            $new_product->save();
         }
 
         $this->createLog([
@@ -343,23 +320,40 @@ class ProductHandler extends MMH_Sync_Log
     {
         $product_categories = array();
         $product_additional_categories = array();
-        $product_type = 'simple';
+        $product_type = $existing_product->get_type();
+        $product_type_change = 0;
+        $product_id = $existing_product->get_id();
 
         if (isset($product_data['_colors']) && $product_data['_colors']) {
+            if ($product_type == 'simple') {
+                $product_type_change = 1;
+            }
             $product_type = 'variable';
         }
 
-        if ($product_type === 'variable') {
+        
+        //if product type changed from simple to variable delete simple product
+        if ($product_type_change === 1) {
+
+            $attachment_id = $existing_product->get_image_id();
+            $gallery_image_ids = $existing_product->get_gallery_image_ids();
+
+            wp_delete_post($product_id, true);
             $existing_product = new WC_Product_Variable();
-        } else {
-            $existing_product = new WC_Product_Simple();
+
+            $existing_product->set_image_id($attachment_id);
+            $existing_product->set_gallery_image_ids($gallery_image_ids);
         }
 
+        if ($product_type === 'variable') {
+            $StockHandler = new StockHandler();
+            $variationStock = $StockHandler->variationStock($this->normalizeCharacters($product_data['code']));
+        }
         if (!empty($existing_product)) {
-            $existing_product = reset($existing_products);
-            // error_log(print_r('$product_data 6', true));
-            // error_log(print_r($existing_product, true));
+
+
             $existing_product->set_name($this->normalizeCharacters($product_data['name']));
+            $existing_product->set_sku($product_data['code']);
 
             //adding main categories
             $categories_array = explode('<', $product_data['_categories']);
@@ -430,7 +424,7 @@ class ProductHandler extends MMH_Sync_Log
                 $existing_product->update_meta_data('barcode', $product_data['barcode']);
             }
 
-            $product_id = $existing_product->get_id();
+
 
             if (isset($product_data['brand'])) {
                 // $existing_product->update_meta_data('brand', $this->normalizeCharacters(mb_strtolower($product_data['brand'])));
@@ -459,32 +453,7 @@ class ProductHandler extends MMH_Sync_Log
                 $existing_product->set_height($dimensions['height']);
             }
 
-            if (isset($product_data['_colors']) && $product_data['_colors']) {
-
-                $colors_array = explode('|', $product_data['_colors']);
-
-                $attributeHandler = new AttributeHandler();
-                $attribute_obj = $attributeHandler->productAttributeHandler($product_id, 'color', $colors_array);
-
-                error_log(print_r('$attribute_obj 2', true));
-                error_log(print_r($attribute_obj, true));
-                $existing_product->set_attributes($attribute_obj);
-
-                foreach ($colors_array as $color) {
-
-                    $variation_data = array(
-                        'attributes' => array(
-                            'color' => $color,
-                        ),
-                        'regular_price' => $product_data['_colors'],
-                        // 'sale_price' => '',
-                        'stock_quantity' => 10,
-                        'manage_stock' => true,
-                    );
-                    // $variation_id = $attributeHandler->createOrUpdateVariation($product_id, $variation_data);
-                }
-            }
-            if (isset($product_data['**image_names']) && $product_data['**image_names'] !== '') {
+            if (isset($product_data['**image_names']) && $product_data['**image_names'] !== '' && $product_type_change !== 1) {
                 $image_ids_array = array();
                 $images_array = explode("|", $this->normalizeCharacters($product_data['**image_names']));
                 $imageHandler = new ImageHandler();
@@ -498,14 +467,25 @@ class ProductHandler extends MMH_Sync_Log
                 }
             }
 
-            $product_id = wc_get_product_id_by_sku($product_data['code']);
-            // $product_classname = WC_Product_Factory::get_product_classname($product_id, $product_type);
 
-            // Get the new product object from the correct classname
-            // $updated_product       = new $product_classname($product_id);
+            $variable_product_id = $existing_product->save();
+            if (isset($product_data['_colors']) && $product_data['_colors']) {
+                $_colors = strtolower(str_replace("\r\n", ' ', $product_data['_colors']));
+                $_colors = str_replace(' & ', ' ', $_colors);
+                $colors_array = explode('|', $_colors);
+                $colors_array_lower_case = explode('|',$_colors );
 
-            // Save the product
-            $existing_product->save();
+                $attributeHandler = new AttributeHandler();
+                $attributeHandler->productAttributeHandler($existing_product, $colors_array);
+
+                $variationsArray = $attributeHandler->checkVariationExist($colors_array_lower_case, $variable_product_id);
+
+                if (!empty($variationsArray)) {
+
+                    $attributeHandler->createVariation($variable_product_id, $variationsArray, $variationStock, str_replace(',', '.', $product_data['webprice']));
+                }
+                $existing_product->save();
+            }
             $this->createLog([
                 'action' => 'updateProduct',
                 'type' => 'Success',

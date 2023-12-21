@@ -14,7 +14,7 @@ class StockHandler extends StockLog
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 125);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Disable SSL certificate verification (not recommended for production)
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         $data = curl_exec($ch);
         curl_close($ch);
         $normalStockArray = json_decode($data, true);
@@ -23,7 +23,7 @@ class StockHandler extends StockLog
         curl_setopt($ch, CURLOPT_URL, $zeroStockUrl);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 125);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Disable SSL certificate verification (not recommended for production)
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         $data = curl_exec($ch);
         curl_close($ch);
         $zeroStockArray = json_decode($data, true);
@@ -47,7 +47,8 @@ class StockHandler extends StockLog
         $ProductHandler = new ProductHandler();
         foreach ($stockData as $stockItem) {
 
-            $itemCode = $stockItem->{'item.code'};
+            $itemCode = $stockItem['item.code'];
+
             $_product_id = wc_get_product_id_by_sku($ProductHandler->normalizeCharacters($itemCode));
             if ($_product_id == 0)
                 $_product_id = wc_get_product_id_by_sku($_product_id);
@@ -56,7 +57,7 @@ class StockHandler extends StockLog
                 $existing_product = wc_get_product($_product_id);
 
                 if (isset($stockItem->quantity)) {
-                    $existing_product->set_stock_quantity($stockItem->quantity);
+                    $existing_product->set_stock_quantity($stockItem['quantity']);
                     $existing_product->set_manage_stock(true);
                 } else {
                     $existing_product->set_stock_quantity(0);
@@ -66,6 +67,7 @@ class StockHandler extends StockLog
                 $this->createLog([
                     'sku' => $itemCode,
                     'status' => 'Success',
+                    'quantity' => $stockItem['quantity'],
                     'msg' => 'Stock updated successfully',
                 ]);
             }
@@ -73,7 +75,7 @@ class StockHandler extends StockLog
                 $error_string = $existing_product->get_error_message();
                 $this->createLog([
                     'sku' => $itemCode,
-                    'status' => 'Success',
+                    'status' => 'error',
                     'msg' => $error_string,
                 ]);
             }
@@ -87,11 +89,26 @@ class StockHandler extends StockLog
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 125);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Disable SSL certificate verification (not recommended for production)
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         $data = curl_exec($ch);
         curl_close($ch);
         $normalStockArray = json_decode($data, true);
 
         return $normalStockArray;
+    }
+
+    public function variationStock($sku){
+        $url = 'http://185.106.103.114:8080/$PosGetStock?code='.$sku;
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 125);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        $data = curl_exec($ch);
+        curl_close($ch);
+        $variationStock = json_decode($data, true);
+
+        return $variationStock;
     }
 }

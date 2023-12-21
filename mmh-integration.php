@@ -58,12 +58,11 @@ function run_product_import_cron()
 function run_stock_import_cron()
 {
     error_log(print_r('in run_stock_import_cron ', true));
-    $currentDateTime = new DateTime();
-    $dynamicDate = $currentDateTime->format('Y-m-d H:00');
-    $currentDateTime->modify('-5 minutes');
-    $lastHour = $currentDateTime->format('Y-m-d H:00');
+    $currentDateTime = date("Y-m-d H:i");
+    $pastDateTime = date("Y-m-d H:i", strtotime("-5 minutes"));
+
     $stock_handler = new StockHandler();
-    $stock_handler->StockUpdate($dynamicDate, $lastHour);
+    $stock_handler->StockUpdate($currentDateTime, $pastDateTime);
 }
 // Hook the cron job to your function
 add_action('mmh_product_import_cron', 'run_product_import_cron');
